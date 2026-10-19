@@ -16,6 +16,7 @@ _ID_NAMESPACE = uuid.UUID("6f1c9d52-0b0e-5a43-9d3e-2c7a1b8e4f10")
 ERROR_HTTP_STATUS = {
     "invalid_request": 400,
     "no_repos_available": 404,
+    "repo_unavailable": 404,
     "profile_mismatch": 409,
     "embedder_unavailable": 503,
     "vector_store_unavailable": 503,

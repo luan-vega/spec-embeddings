@@ -34,17 +34,19 @@ class ChunkDraft:
     end_line: int
     text: str
 
-    def embed_text(self, repo_id: str) -> str:
-        """Texto embedado: cabeçalho com repo, caminho, classe, símbolo e linhas + código."""
+    def embed_text(self, repo_id: str, description: str = "") -> str:
+        """Texto embedado: cabeçalho com repo, caminho, classe, símbolo e linhas (+ resumo opcional) + código."""
+        summary = f"summary: {description}\n" if description else ""
         return (
             f"repo: {repo_id}\npath: {self.source}\nclass: {self.class_name}\n"
-            f"symbol: {self.symbol}\nlines: {self.start_line}-{self.end_line}\n\n{self.text}"
+            f"symbol: {self.symbol}\nlines: {self.start_line}-{self.end_line}\n{summary}\n{self.text}"
         )
 
-    def embed_key(self, repo_id: str) -> str:
+    def embed_key(self, repo_id: str, describer_id: str = "") -> str:
         """Chave do cache de embeddings. Ignora números de linha: código que só mudou de
-        posição reaproveita o vetor."""
-        raw = "\x1f".join((repo_id, self.source, self.class_name, self.symbol, self.text))
+        posição reaproveita o vetor. Com descritor, a chave muda junto com ele."""
+        parts = (repo_id, self.source, self.class_name, self.symbol, self.text)
+        raw = "\x1f".join(parts + (describer_id,) if describer_id else parts)
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
     @property

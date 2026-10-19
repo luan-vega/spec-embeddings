@@ -8,6 +8,7 @@ ERROR_HTTP_STATUS = {
     "repo_unavailable": 404,
     "profile_mismatch": 409,
     "embedder_unavailable": 503,
+    "describer_unavailable": 503,
     "vector_store_unavailable": 503,
     "store_busy": 503,
     "overloaded": 503,

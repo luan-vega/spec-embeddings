@@ -372,6 +372,7 @@ A escolha é feita por configuração (`bootstrap.py`); o núcleo não muda.
 |---|---|---|
 | `CODE_SEARCH_EMBEDDER` | `ollama`, `fake` (só desenvolvimento) ou o nome de um adapter registrado | `ollama` |
 | `CODE_SEARCH_STORE` | `file` ou o nome de um adapter registrado | `file` |
+| `CODE_SEARCH_DESCRIBER` | `ollama` ou o nome de um adapter de `ChunkDescriber` registrado (opcional) | desligado |
 | `CODE_SEARCH_ALLOW_REMOTE` | `1` libera adapters marcados como não locais | desligado |
 
 - **Trocar de modelo no Ollama** não exige código: mude `CODE_SEARCH_OLLAMA_MODEL` (e os prefixos, se o modelo pedir).

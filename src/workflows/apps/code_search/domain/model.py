@@ -62,9 +62,13 @@ class IndexSchema:
     policy_version: str
     bm25_k1: float = 1.2
     bm25_b: float = 0.75
+    describer_id: str = ""  # vazio: sem descrição de trechos; mudar força reindexar
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        data = asdict(self)
+        if not data["describer_id"]:
+            del data["describer_id"]  # índices sem descritor mantêm o mesmo schema_id de antes
+        return data
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> "IndexSchema":

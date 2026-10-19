@@ -39,3 +39,27 @@ class FakeEmbedder:
 
     def embed_query(self, text: str) -> np.ndarray:
         return self._vec(self.profile.query_prefix + text)
+
+
+class BagOfWordsEmbedder:
+    """Embedder de teste: hashing trick sobre os termos. Textos com palavras em comum ficam próximos."""
+
+    def __init__(self, dim: int = 64, model: str = "fake-bow") -> None:
+        self.profile = EmbeddingProfile(model=model, digest="sha256:fake-bow", dim=dim)
+
+    def _vec(self, text: str) -> np.ndarray:
+        v = np.zeros(self.profile.dim, dtype=np.float32)
+        for term, count in simple_terms(text).items():
+            h = int.from_bytes(hashlib.sha256(term.encode("utf-8")).digest()[:8], "little")
+            v[h % self.profile.dim] += count
+        if not v.any():
+            v[0] = 1.0
+        return v / np.linalg.norm(v)
+
+    def embed_documents(self, texts: Sequence[str]) -> np.ndarray:
+        if not texts:
+            return np.empty((0, self.profile.dim), dtype=np.float32)
+        return np.stack([self._vec(t) for t in texts])
+
+    def embed_query(self, text: str) -> np.ndarray:
+        return self._vec(text)

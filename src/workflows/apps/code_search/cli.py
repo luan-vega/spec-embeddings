@@ -118,7 +118,12 @@ def _dispatch(args: argparse.Namespace, rt: Runtime, out: TextIO, inp: TextIO) -
         out.write("política de exclusão padrão gravada\n")
         return 0
     if cmd == "ollama-probe":
-        raise CodeSearchError("embedder_unavailable", "ollama-probe is not implemented yet (phase 4)")
+        p = rt.embedder.profile
+        out.write(
+            f"modelo {p.model}\ndigest {p.digest}\ndim {p.dim}\nmax_input_tokens {p.max_input_tokens}\n"
+            f"profile_id {p.profile_id}\n"
+        )
+        return 0
     if cmd == "index":
         report = rt.indexer.index(args.repos)
         if report.status == "skipped":

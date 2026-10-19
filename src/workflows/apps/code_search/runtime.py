@@ -13,6 +13,7 @@ from .embedding_cache import EmbeddingCache
 from .file_store import FileVectorStore
 from .indexer import IndexService
 from .limits import BoundedRunner
+from .ollama import DEFAULT_URL, OllamaEmbedder
 from .policy import ExclusionPolicy
 from .registry import Registry
 from .search import SearchService
@@ -24,9 +25,11 @@ def load_embedder(env: Mapping[str, str] | None = None) -> Embedder:
     env = os.environ if env is None else env
     if env.get("CODE_SEARCH_DEV_FAKE_EMBEDDER") == "1":  # só para desenvolvimento e testes de ponta a ponta
         return BagOfWordsEmbedder()
-    raise CodeSearchError(
-        "embedder_unavailable",
-        "no embedder configured: the Ollama embedder is not implemented yet (phase 4)",
+    return OllamaEmbedder(
+        env.get("CODE_SEARCH_OLLAMA_MODEL", ""),
+        url=env.get("CODE_SEARCH_OLLAMA_URL", DEFAULT_URL),
+        doc_prefix=env.get("CODE_SEARCH_DOC_PREFIX", ""),
+        query_prefix=env.get("CODE_SEARCH_QUERY_PREFIX", ""),
     )
 
 

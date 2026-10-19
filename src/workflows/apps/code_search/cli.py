@@ -1,4 +1,4 @@
-"""CLI: repo add|list|remove, policy init, ollama-probe, index, search, status, serve, mcp, eval."""
+"""CLI: repo add|list|remove, policy init, ollama-probe, index, search, status, rollback, prune, serve, mcp, eval."""
 
 from __future__ import annotations
 
@@ -38,6 +38,11 @@ def _parser() -> argparse.ArgumentParser:
 
     idx = sub.add_parser("index", help="reindexa os repositórios habilitados")
     idx.add_argument("--repo", action="append", dest="repos")
+    idx.add_argument("--force", action="store_true", help="reindexa mesmo se o commit não mudou")
+
+    sub.add_parser("rollback", help="volta para a geração anterior")
+    prune = sub.add_parser("prune", help="apaga gerações e segmentos que ninguém referencia")
+    prune.add_argument("--tmp-max-age", type=float, default=3600.0, help="segundos antes de apagar restos em tmp/")
 
     s = sub.add_parser("search", help="busca no índice ativo")
     s.add_argument("query")
@@ -95,6 +100,9 @@ def main(
     except CodeSearchError as exc:
         err.write(f"erro [{exc.code}]: {exc.message}\n")
         return 1
+    except Exception:  # nunca vaza traceback, caminhos ou conteúdo de código
+        err.write("erro [internal_error]: unexpected failure\n")
+        return 1
 
 
 def _dispatch(args: argparse.Namespace, rt: Runtime, out: TextIO, inp: TextIO) -> int:
@@ -125,11 +133,17 @@ def _dispatch(args: argparse.Namespace, rt: Runtime, out: TextIO, inp: TextIO) -
         )
         return 0
     if cmd == "index":
-        report = rt.indexer.index(args.repos)
+        report = rt.indexer.index(args.repos, force=args.force)
         if report.status == "skipped":
             out.write(f"nada indexado: {report.reason}\n")
             return 1
+        if report.status == "unchanged":
+            out.write(f"nada mudou; geração {report.generation_id} continua ativa\n")
+            return 0
         for r in report.repos:
+            if r.unchanged:
+                out.write(f"{r.repo_id}: sem mudanças (rev {r.revision[:8]})\n")
+                continue
             out.write(
                 f"{r.repo_id}: {r.chunks} chunks, {r.embeddings_new} embeddings novos, {r.embeddings_cached} do cache, "
                 f"{r.chunks_skipped_secret} descartados por segredo, rev {r.revision[:8]}\n"
@@ -154,8 +168,21 @@ def _dispatch(args: argparse.Namespace, rt: Runtime, out: TextIO, inp: TextIO) -
             idx = status["index"]
             out.write(f"política: {'válida' if status['policy']['valid'] else 'inválida (' + status['policy']['reason'] + ')'}\n")
             out.write(f"geração ativa: {idx['generation'] if idx and 'generation' in idx else 'nenhuma'}\n")
+            if idx and idx.get("previous_generation"):
+                out.write(f"geração anterior (rollback): {idx['previous_generation']}\n")
             for r in status["repos"]:
                 out.write(f"{r['repo_id']}\t{'indexado' if r['indexed'] else 'sem índice'}\t{r['chunks']} chunks\t{r['repo_revision'] or '-'}\n")
+        return 0
+    if cmd == "rollback":
+        generation = rt.store.rollback()
+        out.write(f"geração {generation} voltou a ser a ativa\n")
+        return 0
+    if cmd == "prune":
+        removed = rt.store.prune(tmp_max_age=args.tmp_max_age)
+        out.write(
+            f"removidos: {removed['generations']} gerações, {removed['segments']} segmentos"
+            f" ({removed['skipped']} em uso, ficam para a próxima)\n"
+        )
         return 0
     if cmd == "serve":
         from .api.server import serve

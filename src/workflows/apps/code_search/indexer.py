@@ -29,11 +29,12 @@ class RepoReport:
     chunks_skipped_secret: int = 0
     embeddings_new: int = 0
     embeddings_cached: int = 0
+    unchanged: bool = False
 
 
 @dataclass
 class IndexReport:
-    status: str  # published | skipped
+    status: str  # published | unchanged | skipped
     reason: str = ""
     generation_id: str | None = None
     repos: list[RepoReport] = field(default_factory=list)
@@ -76,8 +77,9 @@ class IndexService:
             policy_version=self._policy.version_id,
         )
 
-    def index(self, repo_ids: Sequence[str] | None = None) -> IndexReport:
-        """Reindex completo dos repos habilitados (ou só de ``repo_ids``). Nada é publicado se algo falhar."""
+    def index(self, repo_ids: Sequence[str] | None = None, *, force: bool = False) -> IndexReport:
+        """Reindexa os repos habilitados (ou só ``repo_ids``). Repo com o mesmo commit, roots, perfil e schema do
+        segmento ativo é pulado (a menos de ``force``). Nada é publicado se algo falhar."""
         if not self._policy.valid:
             return IndexReport(status="skipped", reason=self._policy.reason)
         enabled = {e.repo_id: e for e in self._registry.enabled()}
@@ -89,21 +91,38 @@ class IndexService:
                 raise CodeSearchError("invalid_request", "repository is unknown or disabled")
             targets = [enabled[r] for r in repo_ids]
 
+        snapshot = self._store.open_active()
         refs, reports = [], []
         for entry in targets:
+            if not force and self._is_current(snapshot, entry):
+                reports.append(RepoReport(entry.repo_id, revision=snapshot.segments[entry.repo_id].manifest["repo_revision"], unchanged=True))
+                continue
             ref, report = self._index_repo(entry)
             refs.append(ref)
             reports.append(report)
 
         remove: list[str] = []
-        if repo_ids is None:
-            snapshot = self._store.open_active()
-            if snapshot is not None:
-                remove = [r for r in snapshot.repos if r not in enabled]
+        if repo_ids is None and snapshot is not None:
+            remove = [r for r in snapshot.repos if r not in enabled]
+        if not refs and not remove and snapshot is not None:
+            return IndexReport(status="unchanged", generation_id=snapshot.generation_id, repos=reports)
         generation = self._store.publish(
             profile=self._embedder.profile, schema=self.schema, replace=refs, remove=remove
         )
         return IndexReport(status="published", generation_id=generation, repos=reports, removed=remove)
+
+    def _is_current(self, snapshot, entry: RepoEntry) -> bool:
+        seg = snapshot.segments.get(entry.repo_id) if snapshot is not None else None
+        if seg is None:
+            return False
+        m = seg.manifest
+        profile = self._embedder.profile
+        return (
+            m["repo_revision"] == self._git(entry).revision()
+            and m.get("roots") == list(entry.roots)
+            and m["profile_id"] == profile.profile_id
+            and m["schema_id"] == self.schema.schema_id
+        )
 
     def _index_repo(self, entry: RepoEntry):
         report = RepoReport(entry.repo_id)
@@ -159,6 +178,7 @@ class IndexService:
             schema=self.schema,
             chunks=records,
             dense=dense,
+            roots=entry.roots,
         )
         return ref, report
 

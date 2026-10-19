@@ -14,7 +14,7 @@ Desenho completo, revisão da spec e plano de fases: [docs/arquitetura.md](docs/
 | 2 | Registro, política de exclusão, leitura do Git, chunker Java, cache de embeddings, indexador e busca mínima (RRF) | feita |
 | 3 | Busca com limites, CLI, HTTP local, MCP somente leitura, logs estruturados, harness de avaliação | feita |
 | 4 | Embedder Ollama, `ollama-probe`; gate UC1/UC2/UC3 | embedder e probe feitos; dataset e rodada do gate pendentes |
-| 5 | Operação | pendente |
+| 5 | Operação: reindex incremental por repo, `rollback`, `prune`, `status` com geração anterior, falhas sem vazamento | feita |
 
 ## Desenvolvimento
 
@@ -80,3 +80,19 @@ code-search ollama-probe                              # modelo, digest, dimensã
 - Vetor zerado, não finito ou de dimensão errada também falha com `embedder_invalid_output`; os vetores são normalizados no cliente.
 - Ollama fora do ar ou modelo ausente: `embedder_unavailable`.
 - Dataset e rodada do gate: ver [eval/README.md](eval/README.md). O dataset depende dos repositórios reais e ainda não existe.
+
+## Fase 5: operação
+
+```
+code-search index                    # só reindexa repos cujo commit, roots, perfil ou schema mudaram
+code-search index --repo svc-a       # um repo; os demais seguem na geração atual
+code-search index --force            # reindexa mesmo sem mudança (o cache evita chamar o modelo)
+code-search status                   # geração ativa e anterior, repos, revisões
+code-search rollback                 # volta para a geração anterior (a atual vira a anterior)
+code-search prune                    # apaga gerações e segmentos que ninguém referencia
+```
+
+- Se nada mudou, `index` não publica geração nova e informa qual continua ativa.
+- Falha de embedding ou de leitura do Git nunca troca a geração ativa.
+- O `prune` mantém a ativa e a anterior; no Windows, segmento ainda aberto por um leitor fica para a próxima rodada.
+- Erro inesperado na CLI mostra só `erro [internal_error]`, sem traceback, caminhos ou trechos de código.

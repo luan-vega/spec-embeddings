@@ -153,11 +153,14 @@ def test_reindex_unchanged_code_does_not_reembed(env):
     first = env.indexer().index()
     embedded = env.embedder.embedded
     assert embedded > 0 and sum(r.embeddings_new for r in first.repos) == embedded
-    second = env.indexer().index()
+    second = env.indexer().index()  # mesmo commit, roots, perfil e schema: nada a fazer
+    assert second.status == "unchanged" and second.generation_id == first.generation_id
+    assert all(r.unchanged for r in second.repos) and env.embedder.embedded == embedded
+    forced = env.indexer().index(force=True)
     assert env.embedder.embedded == embedded  # cache: nada novo foi ao modelo
-    assert sum(r.embeddings_new for r in second.repos) == 0
-    assert sum(r.embeddings_cached for r in second.repos) >= embedded
-    assert second.generation_id != first.generation_id
+    assert sum(r.embeddings_new for r in forced.repos) == 0
+    assert sum(r.embeddings_cached for r in forced.repos) >= embedded
+    assert forced.status == "published" and forced.generation_id != first.generation_id
 
 
 def test_changed_file_embeds_only_changed_chunks(env):

@@ -323,3 +323,20 @@ def test_ids_roundtrip_and_manifest_contents(store):
     assert manifest["profile_id"] == PROFILE.profile_id and manifest["schema_id"] == SCHEMA.schema_id
     ids = np.load(store.root / "segments" / ref.segment_id / "ids.npy")
     assert ids.shape == (4, 16) and ids.dtype == np.uint8
+
+
+def test_windows_permission_errors_are_retried(monkeypatch):
+    calls = []
+
+    def flaky():
+        calls.append(1)
+        if len(calls) < 3:
+            raise PermissionError(13, "Permission denied")
+        return b"ok"
+
+    monkeypatch.setattr(file_store.sys, "platform", "win32")
+    assert file_store._retry_on_windows(flaky, delay=0) == b"ok" and len(calls) == 3
+
+    monkeypatch.setattr(file_store.sys, "platform", "linux")
+    with pytest.raises(PermissionError):
+        file_store._retry_on_windows(lambda: (_ for _ in ()).throw(PermissionError()), delay=0)

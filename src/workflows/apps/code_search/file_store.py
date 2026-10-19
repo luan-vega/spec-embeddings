@@ -19,6 +19,7 @@ import math
 import os
 import re
 import shutil
+import sys
 import time
 import uuid
 from dataclasses import dataclass
@@ -72,6 +73,21 @@ def _sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
+def _retry_on_windows(fn, attempts: int = 100, delay: float = 0.01):
+    """No Windows, abrir ou substituir um arquivo que outro handle está trocando levanta PermissionError por instantes."""
+    for attempt in range(attempts):
+        try:
+            return fn()
+        except PermissionError:
+            if sys.platform != "win32" or attempt == attempts - 1:
+                raise
+            time.sleep(delay)
+
+
+def _read_bytes(path: Path) -> bytes:
+    return _retry_on_windows(path.read_bytes)
+
+
 def _atomic_write_bytes(path: Path, data: bytes) -> None:
     tmp = path.with_name(f"{path.name}.tmp-{uuid.uuid4().hex[:8]}")
     try:
@@ -79,7 +95,7 @@ def _atomic_write_bytes(path: Path, data: bytes) -> None:
             fh.write(data)
             fh.flush()
             os.fsync(fh.fileno())
-        os.replace(tmp, path)
+        _retry_on_windows(lambda: os.replace(tmp, path))
     except BaseException:
         try:
             tmp.unlink()
@@ -472,7 +488,7 @@ class FileVectorStore:
             gen_bytes = json.dumps({"generation_id": gen_id, **body}, sort_keys=True, indent=1).encode("utf-8")
             _atomic_write_bytes(self.root / "generations" / f"{gen_id}.json", gen_bytes)
 
-            old_active = (self.root / "active.json").read_bytes() if current is not None else None
+            old_active = _read_bytes(self.root / "active.json") if current is not None else None
             pointer = {"generation": gen_id, "sha256": hashlib.sha256(gen_bytes).hexdigest()}
             _atomic_write_bytes(self.root / "active.json", json.dumps(pointer).encode("utf-8"))  # commit
             if old_active is not None:
@@ -487,8 +503,8 @@ class FileVectorStore:
                 raise _unavailable("no previous generation to roll back to")
             self._read_generation(prev[0])
             active_path = self.root / "active.json"
-            old_active = active_path.read_bytes() if active_path.exists() else None
-            _atomic_write_bytes(active_path, (self.root / "previous.json").read_bytes())
+            old_active = _read_bytes(active_path) if active_path.exists() else None
+            _atomic_write_bytes(active_path, _read_bytes(self.root / "previous.json"))
             if old_active is not None:
                 _atomic_write_bytes(self.root / "previous.json", old_active)
             return prev[0]
@@ -550,7 +566,7 @@ class FileVectorStore:
 
     def _read_pointer(self, name: str) -> tuple[str, str] | None:
         try:
-            raw = (self.root / name).read_bytes()
+            raw = _read_bytes(self.root / name)
         except FileNotFoundError:
             return None
         try:
@@ -562,7 +578,7 @@ class FileVectorStore:
     def _read_generation(self, gen_id: str, expected_sha: str | None = None) -> tuple[dict[str, Any], str]:
         if not re.fullmatch(r"[0-9TZ]+-[0-9a-f]{8}", gen_id):
             raise _unavailable("invalid generation id")
-        raw = (self.root / "generations" / f"{gen_id}.json").read_bytes()
+        raw = _read_bytes(self.root / "generations" / f"{gen_id}.json")
         sha = hashlib.sha256(raw).hexdigest()
         if expected_sha is not None and sha != expected_sha:
             raise _unavailable("generation file does not match its pointer")
@@ -571,7 +587,7 @@ class FileVectorStore:
     def _verify_segment(self, seg_dir: Path, ref: SegmentRef, *, full: bool) -> dict[str, Any]:
         manifest_path = seg_dir / "manifest.json"
         try:
-            raw = manifest_path.read_bytes()
+            raw = _read_bytes(manifest_path)
         except FileNotFoundError:
             if full:
                 raise _unavailable("segment is missing") from None

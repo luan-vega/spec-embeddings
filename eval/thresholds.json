@@ -1,0 +1,13 @@
+{
+  "note": "Limiares definidos ANTES da primeira rodada com o modelo real. Mudar qualquer valor exige nova rodada e novo commit antes de trocar o active.json.",
+  "k": 10,
+  "rules": [
+    {"uc": "UC2", "mode": "hybrid", "metric": "recall@5", "min": 0.95},
+    {"uc": "UC2", "mode": "hybrid", "metric": "mrr", "min": 0.80},
+    {"uc": "UC1", "mode": "hybrid", "metric": "ndcg@10", "min_delta_vs": "lexical", "delta": 0.10},
+    {"uc": "UC3", "mode": "hybrid", "metric": "ndcg@10", "min_delta_vs": "lexical", "delta": 0.05},
+    {"uc": "UC1", "mode": "hybrid", "metric": "latency_p95_ms", "max": 300},
+    {"uc": "UC2", "mode": "hybrid", "metric": "latency_p95_ms", "max": 300},
+    {"uc": "UC3", "mode": "hybrid", "metric": "latency_p95_ms", "max": 300}
+  ]
+}

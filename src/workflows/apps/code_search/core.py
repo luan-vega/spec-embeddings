@@ -23,6 +23,10 @@ ERROR_HTTP_STATUS = {
     "store_busy": 503,
     "overloaded": 503,
     "timeout": 504,
+    "payload_too_large": 413,
+    "not_found": 404,
+    "method_not_allowed": 405,
+    "internal_error": 500,
     "embedder_invalid_output": 502,
 }
 

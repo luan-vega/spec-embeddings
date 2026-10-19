@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 import uuid
 from typing import Any, Sequence
 
@@ -45,8 +46,22 @@ class SearchService:
         languages: Sequence[str] | None = None,
         path_prefix: str | None = None,
         top_k: int = 10,
+        request_id: str | None = None,
+        trace: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        request_id = uuid.uuid4().hex
+        """``trace`` (opcional) recebe durações por etapa e contagens, sem texto de consulta nem caminhos."""
+        request_id = request_id or uuid.uuid4().hex
+        trace = trace if trace is not None else {}
+        stages: dict[str, float] = trace.setdefault("stages_ms", {})
+        t0 = time.perf_counter()
+
+        def mark(stage: str) -> None:
+            nonlocal t0
+            now = time.perf_counter()
+            stages[stage] = round((now - t0) * 1000, 3)
+            t0 = now
+
+        trace.update(mode=mode if isinstance(mode, str) else "invalid", request_id=request_id)
         if not isinstance(query, str) or not query.strip() or len(query) > self._max_query:
             raise CodeSearchError("invalid_request", "query is empty or too long")
         if mode not in MODES:
@@ -60,6 +75,7 @@ class SearchService:
         registered = {e.repo_id: e for e in self._registry.list()}
         requested = list(dict.fromkeys(repos)) if repos is not None else [r for r, e in registered.items() if e.enabled]
         snapshot = self._store.open_active()
+        mark("resolve")
 
         unavailable: list[dict[str, str]] = []
         searchable: list[str] = []
@@ -82,13 +98,16 @@ class SearchService:
         ) or snapshot.schema.chunker_version != CHUNKER_VERSION:
             raise CodeSearchError("profile_mismatch", "the active index was built with a different profile or schema")
 
+        trace.update(profile_id=profile.profile_id, generation=snapshot.generation_id)
         dense_q = self._embedder.embed_query(query) if mode in ("hybrid", "semantic") else None
         terms = list(self._sparse.encode_query(query)) if mode in ("hybrid", "lexical") else []
+        mark("embed")
         depth = max(100, 5 * top_k)
         rankings = snapshot.search(
             searchable, dense_q=dense_q, lexical_terms=terms, filters=filters, mode=mode, depth=depth
         )
 
+        mark("retrieve")
         fused = rrf([rankings["dense"], rankings["lexical"]], self._rrf_k)
 
         def locate(hit: Hit) -> tuple[str, int, int]:
@@ -96,6 +115,7 @@ class SearchService:
             return seg.sources[int(seg.source_idx[hit.row])], int(seg.start_line[hit.row]), int(seg.end_line[hit.row])
 
         top = collapse_overlaps(fused, locate, top_k)
+        mark("fuse")
         results = []
         for hit in top:
             rec = snapshot.record(hit)
@@ -114,8 +134,14 @@ class SearchService:
                     "indexed_at": rec["indexed_at"],
                 }
             )
+        mark("hydrate")
+        status = "partial" if unavailable else "complete"
+        trace.update(
+            status=status, repos_searched=len(searchable), repos_unavailable=len(unavailable),
+            candidates=len(fused), results=len(results),
+        )
         return {
-            "status": "partial" if unavailable else "complete",
+            "status": status,
             "results": results,
             "coverage": {"searched": searchable, "unavailable": unavailable},
             "index": {"profile_id": snapshot.profile.profile_id, "generation": snapshot.generation_id},

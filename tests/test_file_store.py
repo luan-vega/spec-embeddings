@@ -5,10 +5,11 @@ import threading
 import numpy as np
 import pytest
 
-from workflows.apps.code_search import file_store
-from workflows.apps.code_search.core import CodeSearchError, EmbeddingProfile, Filters
-from workflows.apps.code_search.file_store import FileVectorStore
-from workflows.apps.code_search.filelock import FileLock
+from workflows.apps.code_search.adapters.driven import file_store
+from workflows.apps.code_search.domain.errors import CodeSearchError
+from workflows.apps.code_search.domain.model import EmbeddingProfile, Filters
+from workflows.apps.code_search.adapters.driven.file_store import FileVectorStore
+from workflows.apps.code_search.adapters.driven.filelock import FileLock
 
 from helpers import PROFILE, SCHEMA, basis, chunk, write
 

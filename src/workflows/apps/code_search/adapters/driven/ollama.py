@@ -11,7 +11,8 @@ from urllib.parse import urlsplit
 
 import numpy as np
 
-from .core import CodeSearchError, EmbeddingProfile
+from ...domain.errors import CodeSearchError
+from ...domain.model import EmbeddingProfile
 
 DEFAULT_URL = "http://127.0.0.1:11434"
 _BATCH = 16

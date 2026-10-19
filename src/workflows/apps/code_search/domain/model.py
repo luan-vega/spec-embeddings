@@ -1,4 +1,4 @@
-"""Contratos, tipos e erros compartilhados. Sem I/O."""
+"""Tipos e regras puras do domínio. Sem I/O e sem dependência de adapters."""
 
 from __future__ import annotations
 
@@ -7,41 +7,11 @@ import json
 import uuid
 from dataclasses import asdict, dataclass, field
 from pathlib import PurePosixPath
-from typing import Any, Mapping, Protocol, Sequence, runtime_checkable
+from typing import Any, Mapping, Sequence
 
-import numpy as np
+from .errors import CodeSearchError
 
 _ID_NAMESPACE = uuid.UUID("6f1c9d52-0b0e-5a43-9d3e-2c7a1b8e4f10")
-
-ERROR_HTTP_STATUS = {
-    "invalid_request": 400,
-    "no_repos_available": 404,
-    "repo_unavailable": 404,
-    "profile_mismatch": 409,
-    "embedder_unavailable": 503,
-    "vector_store_unavailable": 503,
-    "store_busy": 503,
-    "overloaded": 503,
-    "timeout": 504,
-    "payload_too_large": 413,
-    "not_found": 404,
-    "method_not_allowed": 405,
-    "internal_error": 500,
-    "embedder_invalid_output": 502,
-}
-
-
-class CodeSearchError(Exception):
-    """Erro com código estável. A mensagem nunca carrega caminhos absolutos."""
-
-    def __init__(self, code: str, message: str) -> None:
-        super().__init__(message)
-        self.code = code
-        self.message = message
-
-    @property
-    def http_status(self) -> int:
-        return ERROR_HTTP_STATUS.get(self.code, 500)
 
 
 def canonical_json(obj: Any) -> bytes:
@@ -105,26 +75,6 @@ class IndexSchema:
         return short_digest(self.to_dict())
 
 
-@runtime_checkable
-class Embedder(Protocol):
-    profile: EmbeddingProfile
-
-    def embed_documents(self, texts: Sequence[str]) -> np.ndarray:
-        """(n, dim) float32. Falha com embedder_unavailable; nunca devolve zeros."""
-
-    def embed_query(self, text: str) -> np.ndarray:
-        """(dim,) float32."""
-
-
-@runtime_checkable
-class SparseEncoder(Protocol):
-    def encode_documents(self, texts: Sequence[str]) -> list[dict[str, int]]:
-        """Termo -> frequência, determinístico."""
-
-    def encode_query(self, text: str) -> dict[str, float]:
-        """Termo -> peso, determinístico."""
-
-
 @dataclass(frozen=True)
 class ChunkRecord:
     chunk_id: str
@@ -170,3 +120,73 @@ class Hit:
     repo_id: str
     row: int
     score: float
+
+
+@dataclass(frozen=True)
+class SegmentRef:
+    """Referência a um segmento já construído, trocada entre indexador e armazenamento."""
+
+    repo_id: str
+    segment_id: str
+    manifest_sha256: str
+
+    def to_dict(self) -> dict[str, str]:
+        return {"repo_id": self.repo_id, "segment_id": self.segment_id, "manifest_sha256": self.manifest_sha256}
+
+
+@dataclass(frozen=True)
+class SegmentInfo:
+    """O que o núcleo precisa saber de um segmento indexado, sem conhecer o formato de armazenamento."""
+
+    repo_id: str
+    repo_revision: str
+    indexed_at: str
+    roots: tuple[str, ...]
+    profile_id: str
+    schema_id: str
+    chunks: int
+
+
+@dataclass(frozen=True)
+class Location:
+    source: str
+    start_line: int
+    end_line: int
+
+
+@dataclass(frozen=True)
+class BlobEntry:
+    path: str
+    sha: str
+    mode: str
+
+
+DEFAULT_ROOTS = ("src/main/java",)
+
+
+def normalize_root(root: str) -> str:
+    normalized = root.replace("\\", "/")
+    if normalized.startswith("/") or (len(normalized) > 1 and normalized[1] == ":"):
+        raise CodeSearchError("invalid_request", "roots must be relative to the repository")
+    parts = tuple(p for p in PurePosixPath(normalized).parts if p not in ("", "."))
+    if not parts or ".." in parts:
+        raise CodeSearchError("invalid_request", "invalid root")
+    return "/".join(parts)
+
+
+@dataclass(frozen=True)
+class RepoEntry:
+    repo_id: str
+    path: str  # caminho local; nunca é exposto pela API
+    roots: tuple[str, ...] = DEFAULT_ROOTS
+    enabled: bool = True
+    ref: str = "HEAD"
+
+    def to_dict(self) -> dict:
+        return {
+            "repo_id": self.repo_id,
+            "path": self.path,
+            "roots": list(self.roots),
+            "enabled": self.enabled,
+            "ref": self.ref,
+        }

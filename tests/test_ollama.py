@@ -1,53 +1,10 @@
-import json
-import threading
-from http.server import BaseHTTPRequestHandler, HTTPServer
-
 import numpy as np
 import pytest
 
-from workflows.apps.code_search.core import CodeSearchError
-from workflows.apps.code_search.ollama import OllamaClient, OllamaEmbedder
-from workflows.apps.code_search.runtime import load_embedder
-
-
-class FakeOllama:
-    def __init__(self, dim=4, models=("nomic-embed-text:latest",), embed_status=200, embeddings=None):
-        self.dim, self.models, self.embed_status, self.embeddings = dim, models, embed_status, embeddings
-        self.requests = []
-        outer = self
-
-        class H(BaseHTTPRequestHandler):
-            def log_message(self, *a):
-                pass
-
-            def _send(self, status, body):
-                raw = json.dumps(body).encode()
-                self.send_response(status)
-                self.send_header("Content-Length", str(len(raw)))
-                self.end_headers()
-                self.wfile.write(raw)
-
-            def do_GET(self):
-                outer.requests.append(("GET", self.path, None))
-                self._send(200, {"models": [{"name": m, "digest": "abc123"} for m in outer.models]})
-
-            def do_POST(self):
-                body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
-                outer.requests.append(("POST", self.path, body))
-                if self.path == "/api/show":
-                    return self._send(200, {"model_info": {"bert.context_length": 2048}})
-                if outer.embed_status != 200:
-                    return self._send(outer.embed_status, {"error": "x"})
-                vecs = outer.embeddings or [[float(i + 1)] * outer.dim for i in range(len(body["input"]))]
-                self._send(200, {"embeddings": vecs})
-
-        self.server = HTTPServer(("127.0.0.1", 0), H)
-        self.url = f"http://127.0.0.1:{self.server.server_port}"
-        threading.Thread(target=self.server.serve_forever, daemon=True).start()
-
-    def close(self):
-        self.server.shutdown()
-        self.server.server_close()
+from workflows.apps.code_search.domain.errors import CodeSearchError
+from ollama_fake import FakeOllama
+from workflows.apps.code_search.adapters.driven.ollama import OllamaClient, OllamaEmbedder
+from workflows.apps.code_search.bootstrap import load_embedder
 
 
 @pytest.fixture
@@ -143,7 +100,7 @@ def test_load_embedder_requires_model_and_uses_env(ollama):
 def test_cli_ollama_probe_reports_profile(ollama, tmp_path, monkeypatch):
     import io
 
-    from workflows.apps.code_search.cli import main
+    from workflows.apps.code_search.adapters.driving.cli import main
 
     f = ollama(dim=5)
     monkeypatch.delenv("CODE_SEARCH_DEV_FAKE_EMBEDDER", raising=False)

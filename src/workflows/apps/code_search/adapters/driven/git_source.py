@@ -4,21 +4,14 @@ from __future__ import annotations
 
 import os
 import subprocess
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Iterator, Sequence
 
-from .core import CodeSearchError
+from ...domain.errors import CodeSearchError
+from ...domain.model import BlobEntry
 
 _REGULAR_MODES = {"100644", "100755"}  # 120000 = symlink, 160000 = submódulo: ficam de fora
 _BATCH = 200
-
-
-@dataclass(frozen=True)
-class BlobEntry:
-    path: str
-    sha: str
-    mode: str
 
 
 def _unavailable(message: str = "repository is not readable") -> CodeSearchError:

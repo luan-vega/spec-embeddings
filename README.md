@@ -23,6 +23,23 @@ python -m pip install -e ".[dev]"
 python -m pytest
 ```
 
+## Arquitetura em camadas (hexagonal)
+
+```
+domain/        regras puras: tipos, erros, chunker Java, tokenização, RRF, política de exclusão
+application/   casos de uso (IndexService, SearchService, avaliação, limites) e as portas em ports.py
+adapters/
+  driven/      o que o núcleo usa: armazenamento em arquivos NumPy, Git, Ollama, cache, registro, política, logs
+  driving/     quem chama o núcleo: CLI, HTTP local e MCP
+bootstrap.py   raiz de composição: escolhe os adapters por configuração e injeta
+```
+
+`domain` não depende de nada; `application` depende só de `domain`; só `bootstrap` conhece os adapters concretos
+(`tests/test_architecture.py` verifica). Para trocar o Ollama, o modelo ou o armazenamento, veja a seção 8 de
+[docs/arquitetura.md](docs/arquitetura.md): `CODE_SEARCH_EMBEDDER` e `CODE_SEARCH_STORE` escolhem o adapter, e todo
+adapter novo precisa passar nos testes de contrato em `tests/contract`. Adapters que saem da máquina ficam desligados
+a menos que `CODE_SEARCH_ALLOW_REMOTE=1`.
+
 ## Layout em disco (fase 1)
 
 Um segmento por repo, imutável (`segments/<repo>-<hash>/`), com `dense.npy` (float32, L2-normalizado, aberto com memmap),

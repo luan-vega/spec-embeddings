@@ -13,7 +13,8 @@ from typing import Mapping, Sequence
 
 import numpy as np
 
-from .core import CodeSearchError, EmbeddingProfile
+from ...domain.errors import CodeSearchError
+from ...domain.model import EmbeddingProfile
 from .file_store import _load_npy, _save_npy
 
 

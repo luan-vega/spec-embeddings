@@ -95,7 +95,7 @@ flowchart LR
     MCP[MCP stdio read-only]
   end
 
-  subgraph Runtime["runtime.py (bootstrap único)"]
+  subgraph Runtime["bootstrap.py (raiz de composição)"]
     SVC[SearchService]
     IDX[IndexService]
     LIM[Limiter + Executor]
@@ -274,33 +274,54 @@ VectorStore.rollback() / .prune(keep=N)
 
 Mudança em relação à spec: o store expõe **snapshot** (lido uma vez por requisição) em vez de `search` direto. Isso garante que toda a requisição veja a mesma geração, mesmo se uma publicação acontecer no meio.
 
-### 4.6 Estrutura de código
+### 4.6 Estrutura de código (hexagonal)
+
+O núcleo (`domain` + `application`) não conhece Ollama, NumPy em disco, Git, HTTP nem CLI. Tudo que fala com o mundo
+externo está em `adapters` e é ligado em `bootstrap.py`.
 
 ```
 src/workflows/apps/code_search/
-├── api/server.py        # ThreadingHTTPServer, rotas, mapeamento de erros
-├── cli.py
-├── mcp_server.py        # JSON-RPC stdio, read-only
-├── runtime.py           # bootstrap: injeta embedder, store, registro, limites
-├── config.py
-├── core.py              # contratos, tipos, erros
-├── registry.py
-├── policy.py            # novo: política de exclusão + filtro de segredos
-├── git_source.py        # novo: leitura do HEAD
-├── chunker.py           # novo: scanner Java
-├── sparse.py            # novo: tokenizador + BM25
-├── fusion.py            # novo: RRF + colapso
-├── embedding_cache.py   # novo
-├── ollama_embedder.py
-├── file_store.py        # segmentos, gerações, publisher, reader
-├── indexer.py
-└── search.py            # novo: SearchService (sai de core.py)
-eval/
-├── datasets/uc1.jsonl uc2.jsonl uc3.jsonl
-├── thresholds.json      # versionado antes da rodada
-└── run_eval.py          # Recall@k, MRR, nDCG, p50/p95
+├── domain/                     # regras puras, sem I/O
+│   ├── errors.py               # CodeSearchError e códigos HTTP
+│   ├── model.py                # EmbeddingProfile, IndexSchema, ChunkRecord, Filters, Hit, RepoEntry, SegmentInfo...
+│   ├── chunker.py              # scanner Java
+│   ├── sparse.py               # tokenizador lexical
+│   ├── fusion.py               # RRF + colapso de sobreposição
+│   └── policy.py               # regras da política de exclusão e filtro de segredos
+├── application/                # casos de uso e portas
+│   ├── ports.py                # Embedder, SparseEncoder, VectorStore, IndexSnapshot, RepoRegistry, SourceReader, EmbeddingCache
+│   ├── indexer.py              # IndexService
+│   ├── search.py               # SearchService
+│   ├── evaluation.py           # gate (Recall@k, MRR, nDCG, latência)
+│   └── limits.py               # executor com concorrência limitada
+├── adapters/
+│   ├── driven/                 # implementam as portas (o que o núcleo usa)
+│   │   ├── file_store.py       # VectorStore em arquivos NumPy (segmentos, gerações, snapshot)
+│   │   ├── filelock.py
+│   │   ├── embedding_cache.py  # EmbeddingCache em shards
+│   │   ├── git_source.py       # SourceReader sobre `git ls-tree` / `cat-file`
+│   │   ├── ollama.py           # Embedder via Ollama em loopback
+│   │   ├── fakes.py            # embedders determinísticos para desenvolvimento e testes
+│   │   ├── registry.py         # RepoRegistry em repositories.json
+│   │   ├── policy_store.py     # carrega/grava a política em JSON
+│   │   └── obslog.py           # logs estruturados
+│   └── driving/                # chamam o núcleo (quem usa o serviço)
+│       ├── cli.py
+│       ├── http_server.py
+│       └── mcp_server.py
+├── bootstrap.py                # raiz de composição: escolhe adapters por configuração e injeta
+├── config.py                   # caminhos (CODE_SEARCH_HOME)
+└── __main__.py
+eval/                           # datasets, thresholds.json
 tests/
+├── contract/                   # contratos que todo adapter de Embedder e VectorStore precisa cumprir
+└── test_architecture.py        # impede que domain/application importem adapters
 ```
+
+Regras de dependência (verificadas por `tests/test_architecture.py`): `domain` não importa nada do resto;
+`application` importa só `domain`; `adapters` importam `application` e `domain`; só `bootstrap` conhece os adapters
+concretos. O perfil de embedding (modelo, digest, dimensão, normalização, prefixos) é montado pelo adapter do
+embedder e viaja como valor (`EmbeddingProfile`); o núcleo só o compara e o grava no índice, nunca assume um modelo.
 
 ---
 
@@ -340,3 +361,45 @@ Custos e limites:
 - O segmento do repo é reconstruído inteiro (a matriz é recopiada do cache). Para o tamanho esperado isso leva segundos; atualização incremental dentro do segmento fica fora do escopo.
 - Mudou o modelo, o prefixo, o chunker ou o tokenizador: o cache do perfil antigo não vale, então é reindexação completa em geração nova, passando pelo gate antes de trocar o `active.json`.
 - Gatilho: manual (`index`) na primeira versão. Opcional depois: hook `post-commit`/`post-merge` ou um timer que chama `index` para repos cujo HEAD mudou.
+
+---
+
+## 8. Como trocar o Ollama, o modelo ou o armazenamento
+
+A escolha é feita por configuração (`bootstrap.py`); o núcleo não muda.
+
+| Variável | Valores | Padrão |
+|---|---|---|
+| `CODE_SEARCH_EMBEDDER` | `ollama`, `fake` (só desenvolvimento) ou o nome de um adapter registrado | `ollama` |
+| `CODE_SEARCH_STORE` | `file` ou o nome de um adapter registrado | `file` |
+| `CODE_SEARCH_ALLOW_REMOTE` | `1` libera adapters marcados como não locais | desligado |
+
+- **Trocar de modelo no Ollama** não exige código: mude `CODE_SEARCH_OLLAMA_MODEL` (e os prefixos, se o modelo pedir).
+  O `profile_id` muda, o serviço recusa buscar num índice de outro perfil (`profile_mismatch`) e é preciso reindexar
+  e passar o gate de novo antes de ativar.
+- **Zero egress:** adapters que saem da máquina precisam ser registrados com `local=False` e só são aceitos com
+  `CODE_SEARCH_ALLOW_REMOTE=1`; sem isso o serviço falha ao subir. O padrão continua 100% local.
+
+### Checklist: novo adapter de embedder
+
+1. Crie `adapters/driven/<nome>.py` com uma classe que tenha `profile: EmbeddingProfile`, `embed_documents` e `embed_query`
+   (a porta `Embedder` em `application/ports.py`). Vetores `float32`, normalizados, sem zeros; falhas viram
+   `embedder_unavailable` ou `embedder_invalid_output`.
+2. Monte o `EmbeddingProfile` no adapter (modelo, digest ou versão, dimensão, prefixos). Se qualquer um mudar, o `profile_id` muda.
+3. Registre em `bootstrap.py` (`EMBEDDERS` ou `register_embedder("nome", fabrica, local=...)`).
+4. Em `tests/contract/test_embedders.py`, adicione uma classe que herde de `EmbedderContract` e forneça a fixture `embedder`.
+   O adapter só é aceito se passar no contrato.
+5. Rode o gate (`code-search eval`) com o novo modelo antes de ativar um índice construído com ele.
+
+### Checklist: novo adapter de armazenamento (banco de dados)
+
+1. Crie `adapters/driven/<nome>.py` com uma classe que cumpra `VectorStore` e devolva `IndexSnapshot` em `open_active()`
+   (`application/ports.py`): `write_segment`, `publish`, `rollback`, `prune`, `previous_generation_id`, e no snapshot
+   `search`, `coverage`, `segment_info`, `locate` e `record`.
+2. Garanta as propriedades que o contrato testa: segmento invisível até publicar; publicação atômica; leitor vê uma
+   geração inteira; perfil ou schema diferente falha com `profile_mismatch`; vetor nulo é rejeitado; rollback e prune
+   mantêm ativa e anterior.
+3. Registre em `bootstrap.py` (`STORES` ou `register_store`). Banco remoto entra com `local=False`.
+4. Em `tests/contract/test_stores.py`, adicione uma classe que herde de `StoreContract` e forneça a fixture `store`.
+5. O `EmbeddingCache`, o `RepoRegistry` e o `SourceReader` seguem o mesmo caminho: porta em `application/ports.py`,
+   adapter em `adapters/driven`, registro no `bootstrap`.

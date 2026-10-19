@@ -8,7 +8,7 @@ from typing import Sequence
 
 import numpy as np
 
-from .core import EmbeddingProfile
+from ...domain.model import EmbeddingProfile
 
 _WORD = re.compile(r"[A-Za-z][a-z0-9]*|[A-Z]+(?![a-z])|\d+")
 

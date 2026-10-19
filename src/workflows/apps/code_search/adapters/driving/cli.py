@@ -8,10 +8,10 @@ import sys
 from pathlib import Path
 from typing import Any, Callable, Sequence, TextIO
 
-from .core import CodeSearchError
-from .evaluation import check_thresholds, evaluate, load_dataset, load_thresholds
-from .policy import write_default_policy
-from .runtime import Runtime, build_runtime
+from ...application.evaluation import check_thresholds, evaluate, load_dataset, load_thresholds
+from ...bootstrap import Runtime, build_runtime
+from ...domain.errors import CodeSearchError
+from ..driven.policy_store import write_default_policy
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -185,7 +185,7 @@ def _dispatch(args: argparse.Namespace, rt: Runtime, out: TextIO, inp: TextIO) -
         )
         return 0
     if cmd == "serve":
-        from .api.server import serve
+        from .http_server import serve
 
         serve(rt, args.host, args.port)
         return 0

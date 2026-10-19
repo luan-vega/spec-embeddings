@@ -10,10 +10,10 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
-from ..core import CodeSearchError
-from ..limits import OverloadedError
-from ..obslog import log_event
-from ..runtime import Runtime
+from ...application.limits import OverloadedError
+from ...bootstrap import Runtime
+from ...domain.errors import CodeSearchError
+from ..driven.obslog import log_event
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765

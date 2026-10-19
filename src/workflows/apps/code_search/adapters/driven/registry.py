@@ -4,45 +4,14 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 
-from .core import CodeSearchError
+from ...domain.errors import CodeSearchError
+from ...domain.model import DEFAULT_ROOTS, RepoEntry, normalize_root
 from .file_store import _atomic_write_bytes
 from .filelock import FileLock
 
 _REPO_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
-DEFAULT_ROOTS = ("src/main/java",)
-
-
-def normalize_root(root: str) -> str:
-    normalized = root.replace("\\", "/")
-    if normalized.startswith("/") or (len(normalized) > 1 and normalized[1] == ":"):
-        raise CodeSearchError("invalid_request", "roots must be relative to the repository")
-    parts = tuple(p for p in PurePosixPath(normalized).parts if p not in ("", "."))
-    if not parts or ".." in parts:
-        raise CodeSearchError("invalid_request", "invalid root")
-    return "/".join(parts)
-
-
-@dataclass(frozen=True)
-class RepoEntry:
-    repo_id: str
-    path: str  # caminho local; nunca é exposto pela API
-    roots: tuple[str, ...] = DEFAULT_ROOTS
-    enabled: bool = True
-    ref: str = "HEAD"
-
-    def to_dict(self) -> dict:
-        return {
-            "repo_id": self.repo_id,
-            "path": self.path,
-            "roots": list(self.roots),
-            "enabled": self.enabled,
-            "ref": self.ref,
-        }
-
-
 class Registry:
     def __init__(self, path: Path | str) -> None:
         self.path = Path(path)

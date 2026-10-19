@@ -3,8 +3,8 @@ import json
 
 import pytest
 
-from workflows.apps.code_search import cli
-from workflows.apps.code_search.cli import main
+from workflows.apps.code_search.adapters.driving import cli
+from workflows.apps.code_search.adapters.driving.cli import main
 
 from gitutil import commit_all, make_repo
 from rtutil import CLIENTE, PAGAMENTO

@@ -3,15 +3,10 @@ import socket
 import numpy as np
 import pytest
 
-from workflows.apps.code_search.core import (
-    CodeSearchError,
-    EmbeddingProfile,
-    Embedder,
-    Filters,
-    IndexSchema,
-    make_chunk_id,
-)
-from workflows.apps.code_search.testing import FakeEmbedder, simple_terms
+from workflows.apps.code_search.domain.errors import CodeSearchError
+from workflows.apps.code_search.domain.model import EmbeddingProfile, Filters, IndexSchema, make_chunk_id
+from workflows.apps.code_search.application.ports import Embedder
+from workflows.apps.code_search.adapters.driven.fakes import FakeEmbedder, simple_terms
 
 
 def test_profile_id_changes_with_any_field():

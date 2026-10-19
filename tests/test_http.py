@@ -5,9 +5,9 @@ import time
 
 import pytest
 
-from workflows.apps.code_search.api.server import CodeSearchServer
-from workflows.apps.code_search.core import CodeSearchError
-from workflows.apps.code_search.testing import BagOfWordsEmbedder
+from workflows.apps.code_search.adapters.driving.http_server import CodeSearchServer
+from workflows.apps.code_search.domain.errors import CodeSearchError
+from workflows.apps.code_search.adapters.driven.fakes import BagOfWordsEmbedder
 
 from rtutil import make_indexed_runtime
 from test_limits_logs import capture_logs
@@ -122,7 +122,7 @@ def test_routes_and_methods(served):
 def test_profile_mismatch_is_409(served):
     start, tmp_path = served
     make_indexed_runtime(tmp_path)  # índice criado com o perfil padrão
-    from workflows.apps.code_search.runtime import build_runtime
+    from workflows.apps.code_search.bootstrap import build_runtime
 
     other = build_runtime(tmp_path / "home", embedder=BagOfWordsEmbedder(model="outro-modelo"))
     client = start(other)

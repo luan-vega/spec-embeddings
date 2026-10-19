@@ -3,10 +3,11 @@ import hashlib
 import numpy as np
 import pytest
 
-from workflows.apps.code_search.chunker import MAX_CHARS, MAX_LINES, OVERLAP, chunk_java, mask_java, split_windows
-from workflows.apps.code_search.core import CodeSearchError, EmbeddingProfile
-from workflows.apps.code_search.embedding_cache import EmbeddingCache
-from workflows.apps.code_search.sparse import JavaSparseEncoder, tokenize
+from workflows.apps.code_search.domain.chunker import MAX_CHARS, MAX_LINES, OVERLAP, chunk_java, mask_java, split_windows
+from workflows.apps.code_search.domain.errors import CodeSearchError
+from workflows.apps.code_search.domain.model import EmbeddingProfile
+from workflows.apps.code_search.adapters.driven.embedding_cache import EmbeddingCache
+from workflows.apps.code_search.domain.sparse import JavaSparseEncoder, tokenize
 
 SRC = '''package a.b;
 

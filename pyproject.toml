@@ -10,7 +10,7 @@ requires-python = ">=3.12"
 dependencies = ["numpy>=2.0,<3"]
 
 [project.scripts]
-code-search = "workflows.apps.code_search.cli:main"
+code-search = "workflows.apps.code_search.adapters.driving.cli:main"
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]

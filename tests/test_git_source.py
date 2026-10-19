@@ -1,7 +1,7 @@
 import pytest
 
-from workflows.apps.code_search.core import CodeSearchError
-from workflows.apps.code_search.git_source import GitSource
+from workflows.apps.code_search.domain.errors import CodeSearchError
+from workflows.apps.code_search.adapters.driven.git_source import GitSource
 
 from gitutil import add_symlink_entry, commit_all, git, make_repo
 

@@ -28,13 +28,16 @@ from typing import Any, Iterable, Sequence
 
 import numpy as np
 
-from .core import (
+from ...domain.errors import CodeSearchError
+from ...domain.model import (
     ChunkRecord,
-    CodeSearchError,
     EmbeddingProfile,
     Filters,
     Hit,
     IndexSchema,
+    Location,
+    SegmentInfo,
+    SegmentRef,
     canonical_json,
 )
 from .filelock import FileLock
@@ -133,16 +136,6 @@ def _top(scores: np.ndarray, depth: int) -> np.ndarray:
     else:
         idx = np.arange(n)
     return idx[np.lexsort((idx, -scores[idx]))]
-
-
-@dataclass(frozen=True)
-class SegmentRef:
-    repo_id: str
-    segment_id: str
-    manifest_sha256: str
-
-    def to_dict(self) -> dict[str, str]:
-        return {"repo_id": self.repo_id, "segment_id": self.segment_id, "manifest_sha256": self.manifest_sha256}
 
 
 class Segment:
@@ -307,6 +300,25 @@ class GenerationSnapshot:
 
     def record(self, hit: Hit) -> dict[str, Any]:
         return self.segments[hit.repo_id].record(hit.row)
+
+    def locate(self, hit: Hit) -> Location:
+        seg = self.segments[hit.repo_id]
+        return Location(seg.sources[int(seg.source_idx[hit.row])], int(seg.start_line[hit.row]), int(seg.end_line[hit.row]))
+
+    def segment_info(self, repo_id: str) -> SegmentInfo | None:
+        seg = self.segments.get(repo_id)
+        if seg is None:
+            return None
+        m = seg.manifest
+        return SegmentInfo(
+            repo_id=repo_id,
+            repo_revision=m["repo_revision"],
+            indexed_at=m["indexed_at"],
+            roots=tuple(m.get("roots", ())),
+            profile_id=m["profile_id"],
+            schema_id=m["schema_id"],
+            chunks=seg.count,
+        )
 
 
 class FileVectorStore:

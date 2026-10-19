@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Callable, Iterable, Sequence
 
-from .core import Hit
+from .model import Hit
 
 RRF_K = 60
 

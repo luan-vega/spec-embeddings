@@ -1,7 +1,7 @@
 import numpy as np
 
-from workflows.apps.code_search.core import ChunkRecord, EmbeddingProfile, IndexSchema, make_chunk_id
-from workflows.apps.code_search.testing import simple_terms
+from workflows.apps.code_search.domain.model import ChunkRecord, EmbeddingProfile, IndexSchema, make_chunk_id
+from workflows.apps.code_search.adapters.driven.fakes import simple_terms
 
 PROFILE = EmbeddingProfile(model="fake", digest="sha256:abc", dim=4)
 SCHEMA = IndexSchema(chunker_version="1", tokenizer_version="1", policy_version="1")

@@ -6,11 +6,11 @@ import time
 import uuid
 from typing import Any, Sequence
 
-from .chunker import CHUNKER_VERSION
-from .core import CodeSearchError, Embedder, Filters, Hit, SparseEncoder
-from .file_store import FileVectorStore
-from .fusion import RRF_K, collapse_overlaps, rrf
-from .registry import Registry
+from ..domain.chunker import CHUNKER_VERSION
+from ..domain.errors import CodeSearchError
+from ..domain.fusion import RRF_K, collapse_overlaps, rrf
+from ..domain.model import Filters, Hit
+from .ports import Embedder, RepoRegistry, SparseEncoder, VectorStore
 
 MODES = ("hybrid", "semantic", "lexical")
 
@@ -19,8 +19,8 @@ class SearchService:
     def __init__(
         self,
         *,
-        store: FileVectorStore,
-        registry: Registry,
+        store: VectorStore,
+        registry: RepoRegistry,
         embedder: Embedder,
         sparse: SparseEncoder,
         max_query_chars: int = 2000,
@@ -85,7 +85,7 @@ class SearchService:
                 unavailable.append({"repo": repo, "reason": "unknown_repo"})
             elif not entry.enabled:
                 unavailable.append({"repo": repo, "reason": "disabled"})
-            elif snapshot is None or repo not in snapshot.segments:
+            elif snapshot is None or snapshot.segment_info(repo) is None:
                 unavailable.append({"repo": repo, "reason": "no_index"})
             else:
                 searchable.append(repo)
@@ -111,8 +111,8 @@ class SearchService:
         fused = rrf([rankings["dense"], rankings["lexical"]], self._rrf_k)
 
         def locate(hit: Hit) -> tuple[str, int, int]:
-            seg = snapshot.segments[hit.repo_id]
-            return seg.sources[int(seg.source_idx[hit.row])], int(seg.start_line[hit.row]), int(seg.end_line[hit.row])
+            loc = snapshot.locate(hit)
+            return loc.source, loc.start_line, loc.end_line
 
         top = collapse_overlaps(fused, locate, top_k)
         mark("fuse")

@@ -7,7 +7,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
 from typing import Any, Callable
 
-from .core import CodeSearchError
+from ..domain.errors import CodeSearchError
 
 
 class OverloadedError(CodeSearchError):

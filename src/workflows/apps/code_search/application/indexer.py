@@ -8,13 +8,11 @@ from typing import Callable, Sequence
 
 import numpy as np
 
-from .chunker import CHUNKER_VERSION, ChunkDraft, chunk_java
-from .core import ChunkRecord, CodeSearchError, Embedder, IndexSchema, SparseEncoder, make_chunk_id
-from .embedding_cache import EmbeddingCache
-from .file_store import FileVectorStore
-from .git_source import GitSource
-from .policy import ExclusionPolicy
-from .registry import Registry, RepoEntry
+from ..domain.chunker import CHUNKER_VERSION, ChunkDraft, chunk_java
+from ..domain.errors import CodeSearchError
+from ..domain.model import ChunkRecord, IndexSchema, RepoEntry, make_chunk_id
+from ..domain.policy import ExclusionPolicy
+from .ports import EmbeddingCache, Embedder, RepoRegistry, SourceReaderFactory, SparseEncoder, VectorStore
 
 
 @dataclass
@@ -49,15 +47,15 @@ class IndexService:
     def __init__(
         self,
         *,
-        store: FileVectorStore,
-        registry: Registry,
+        store: VectorStore,
+        registry: RepoRegistry,
         embedder: Embedder,
         sparse: SparseEncoder,
         policy: ExclusionPolicy,
         cache: EmbeddingCache,
         batch_size: int = 32,
         now: Callable[[], str] = _utc_now,
-        git_factory: Callable[[RepoEntry], GitSource] = lambda e: GitSource(e.path, e.ref),
+        git_factory: SourceReaderFactory,
     ) -> None:
         self._store = store
         self._registry = registry
@@ -95,7 +93,7 @@ class IndexService:
         refs, reports = [], []
         for entry in targets:
             if not force and self._is_current(snapshot, entry):
-                reports.append(RepoReport(entry.repo_id, revision=snapshot.segments[entry.repo_id].manifest["repo_revision"], unchanged=True))
+                reports.append(RepoReport(entry.repo_id, revision=snapshot.segment_info(entry.repo_id).repo_revision, unchanged=True))
                 continue
             ref, report = self._index_repo(entry)
             refs.append(ref)
@@ -112,16 +110,15 @@ class IndexService:
         return IndexReport(status="published", generation_id=generation, repos=reports, removed=remove)
 
     def _is_current(self, snapshot, entry: RepoEntry) -> bool:
-        seg = snapshot.segments.get(entry.repo_id) if snapshot is not None else None
-        if seg is None:
+        info = snapshot.segment_info(entry.repo_id) if snapshot is not None else None
+        if info is None:
             return False
-        m = seg.manifest
         profile = self._embedder.profile
         return (
-            m["repo_revision"] == self._git(entry).revision()
-            and m.get("roots") == list(entry.roots)
-            and m["profile_id"] == profile.profile_id
-            and m["schema_id"] == self.schema.schema_id
+            info.repo_revision == self._git(entry).revision()
+            and info.roots == tuple(entry.roots)
+            and info.profile_id == profile.profile_id
+            and info.schema_id == self.schema.schema_id
         )
 
     def _index_repo(self, entry: RepoEntry):

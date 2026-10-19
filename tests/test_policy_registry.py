@@ -2,9 +2,10 @@ import json
 
 import pytest
 
-from workflows.apps.code_search.core import CodeSearchError
-from workflows.apps.code_search.policy import DEFAULT_POLICY, ExclusionPolicy, write_default_policy
-from workflows.apps.code_search.registry import Registry
+from workflows.apps.code_search.domain.errors import CodeSearchError
+from workflows.apps.code_search.adapters.driven.policy_store import load_policy, write_default_policy
+from workflows.apps.code_search.domain.policy import DEFAULT_POLICY, ExclusionPolicy
+from workflows.apps.code_search.adapters.driven.registry import Registry
 
 from gitutil import make_repo
 
@@ -17,7 +18,7 @@ def policy():
 
 
 def test_missing_policy_indexes_nothing(tmp_path):
-    p = ExclusionPolicy.load(tmp_path / "nope.json")
+    p = load_policy(tmp_path / "nope.json")
     assert not p.valid and p.reason == "policy_missing"
     assert not p.allows("src/main/java/A.java")
 
@@ -40,16 +41,16 @@ def test_invalid_policy_indexes_nothing(tmp_path, mutate):
     mutate(data)
     path = tmp_path / "p.json"
     path.write_text(json.dumps(data))
-    p = ExclusionPolicy.load(path)
+    p = load_policy(path)
     assert not p.valid and p.reason == "policy_invalid"
     assert not p.allows("src/main/java/A.java")
     path.write_text("{not json")
-    assert ExclusionPolicy.load(path).reason == "policy_invalid"
+    assert load_policy(path).reason == "policy_invalid"
 
 
 def test_default_policy_roundtrip_and_version(tmp_path):
     write_default_policy(tmp_path / "p.json")
-    p = ExclusionPolicy.load(tmp_path / "p.json")
+    p = load_policy(tmp_path / "p.json")
     assert p.valid and p.version_id.startswith("1-")
     changed = json.loads(json.dumps(DEFAULT_POLICY))
     changed["exclude_dirs"].append("legacy")

@@ -9,14 +9,12 @@ from __future__ import annotations
 
 import fnmatch
 import hashlib
-import json
 import re
 from dataclasses import dataclass, field
-from pathlib import Path, PurePosixPath
+from pathlib import PurePosixPath
 from typing import Any
 
-from .core import canonical_json
-from .file_store import _atomic_write_bytes
+from .model import canonical_json
 
 DEFAULT_POLICY: dict[str, Any] = {
     "version": "1",
@@ -41,12 +39,6 @@ DEFAULT_POLICY: dict[str, Any] = {
 _KEYS = set(DEFAULT_POLICY)
 
 
-def write_default_policy(path: Path | str) -> None:
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    _atomic_write_bytes(path, json.dumps(DEFAULT_POLICY, indent=1).encode("utf-8"))
-
-
 @dataclass(frozen=True)
 class ExclusionPolicy:
     valid: bool
@@ -61,19 +53,6 @@ class ExclusionPolicy:
     @classmethod
     def deny_all(cls, reason: str) -> "ExclusionPolicy":
         return cls(valid=False, reason=reason)
-
-    @classmethod
-    def load(cls, path: Path | str) -> "ExclusionPolicy":
-        try:
-            raw = Path(path).read_bytes()
-        except FileNotFoundError:
-            return cls.deny_all("policy_missing")
-        except OSError:
-            return cls.deny_all("policy_unreadable")
-        try:
-            return cls.from_dict(json.loads(raw))
-        except ValueError:
-            return cls.deny_all("policy_invalid")
 
     @classmethod
     def from_dict(cls, data: Any) -> "ExclusionPolicy":

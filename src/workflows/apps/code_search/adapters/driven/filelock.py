@@ -7,7 +7,7 @@ import sys
 import time
 from pathlib import Path
 
-from .core import CodeSearchError
+from ...domain.errors import CodeSearchError
 
 if sys.platform == "win32":
     import msvcrt

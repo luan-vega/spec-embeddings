@@ -1,8 +1,8 @@
 from pathlib import Path
 
-from workflows.apps.code_search.policy import write_default_policy
-from workflows.apps.code_search.runtime import build_runtime
-from workflows.apps.code_search.testing import BagOfWordsEmbedder
+from workflows.apps.code_search.adapters.driven.policy_store import write_default_policy
+from workflows.apps.code_search.bootstrap import build_runtime
+from workflows.apps.code_search.adapters.driven.fakes import BagOfWordsEmbedder
 
 from gitutil import make_repo
 

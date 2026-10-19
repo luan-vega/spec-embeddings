@@ -1,15 +1,17 @@
 import numpy as np
 import pytest
 
-from workflows.apps.code_search.core import CodeSearchError
-from workflows.apps.code_search.embedding_cache import EmbeddingCache
-from workflows.apps.code_search.file_store import FileVectorStore
-from workflows.apps.code_search.indexer import IndexService
-from workflows.apps.code_search.policy import DEFAULT_POLICY, ExclusionPolicy
-from workflows.apps.code_search.registry import Registry
-from workflows.apps.code_search.search import SearchService
-from workflows.apps.code_search.sparse import JavaSparseEncoder
-from workflows.apps.code_search.testing import BagOfWordsEmbedder
+from workflows.apps.code_search.domain.errors import CodeSearchError
+from workflows.apps.code_search.adapters.driven.embedding_cache import EmbeddingCache
+from workflows.apps.code_search.adapters.driven.file_store import FileVectorStore
+from workflows.apps.code_search.adapters.driven.git_source import GitSource
+from workflows.apps.code_search.application.indexer import IndexService
+from workflows.apps.code_search.adapters.driven.policy_store import load_policy
+from workflows.apps.code_search.domain.policy import DEFAULT_POLICY, ExclusionPolicy
+from workflows.apps.code_search.adapters.driven.registry import Registry
+from workflows.apps.code_search.application.search import SearchService
+from workflows.apps.code_search.domain.sparse import JavaSparseEncoder
+from workflows.apps.code_search.adapters.driven.fakes import BagOfWordsEmbedder
 
 from gitutil import add_symlink_entry, commit_all, git, make_repo
 
@@ -78,7 +80,7 @@ def env(tmp_path):
         return IndexService(
             store=store, registry=registry, embedder=embedder, sparse=sparse, policy=policy,
             cache=EmbeddingCache(home / "cache", embedder.profile), batch_size=4,
-            now=lambda: "2026-10-19T12:00:00Z",
+            now=lambda: "2026-10-19T12:00:00Z", git_factory=lambda e: GitSource(e.path, e.ref),
         )
 
     search = SearchService(store=store, registry=registry, embedder=embedder, sparse=sparse)
@@ -206,7 +208,7 @@ def test_null_vectors_from_embedder_are_rejected(env):
 
 
 def test_missing_or_invalid_policy_indexes_nothing(env, tmp_path):
-    for policy in (ExclusionPolicy.load(tmp_path / "ausente.json"), ExclusionPolicy.from_dict({"version": "1"})):
+    for policy in (load_policy(tmp_path / "ausente.json"), ExclusionPolicy.from_dict({"version": "1"})):
         report = env.indexer(policy).index()
         assert report.status == "skipped" and report.reason.startswith("policy_")
     assert env.store.active_generation_id() is None

@@ -1,7 +1,7 @@
 import io
 import json
 
-from workflows.apps.code_search.mcp_server import McpServer, serve_stdio
+from workflows.apps.code_search.adapters.driving.mcp_server import McpServer, serve_stdio
 
 from rtutil import make_indexed_runtime
 

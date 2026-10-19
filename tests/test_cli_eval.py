@@ -3,10 +3,10 @@ import json
 
 import pytest
 
-from workflows.apps.code_search import evaluation as ev
-from workflows.apps.code_search.cli import main
-from workflows.apps.code_search.runtime import build_runtime
-from workflows.apps.code_search.testing import BagOfWordsEmbedder
+from workflows.apps.code_search.application import evaluation as ev
+from workflows.apps.code_search.adapters.driving.cli import main
+from workflows.apps.code_search.bootstrap import build_runtime
+from workflows.apps.code_search.adapters.driven.fakes import BagOfWordsEmbedder
 
 from gitutil import make_repo
 from rtutil import CLIENTE, PAGAMENTO, make_indexed_runtime

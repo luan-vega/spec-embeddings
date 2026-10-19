@@ -5,9 +5,9 @@ from __future__ import annotations
 import json
 from typing import Any, TextIO
 
-from .api.server import parse_search_body
-from .core import CodeSearchError
-from .runtime import Runtime
+from ...bootstrap import Runtime
+from ...domain.errors import CodeSearchError
+from .http_server import parse_search_body
 
 SUPPORTED_PROTOCOLS = ("2025-06-18", "2025-03-26", "2024-11-05")
 MAX_TEXT_CHARS = 4000  # por resultado devolvido ao cliente MCP

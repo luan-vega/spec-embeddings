@@ -6,9 +6,9 @@ import time
 
 import pytest
 
-from workflows.apps.code_search import obslog
-from workflows.apps.code_search.core import CodeSearchError
-from workflows.apps.code_search.limits import BoundedRunner, OverloadedError
+from workflows.apps.code_search.adapters.driven import obslog
+from workflows.apps.code_search.domain.errors import CodeSearchError
+from workflows.apps.code_search.application.limits import BoundedRunner, OverloadedError
 
 
 def test_runner_returns_value_and_propagates_errors():

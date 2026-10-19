@@ -13,7 +13,7 @@ Desenho completo, revisão da spec e plano de fases: [docs/arquitetura.md](docs/
 | 1 | `FileVectorStore`: segmentos imutáveis, gerações atômicas, lock, rollback, prune | feita |
 | 2 | Registro, política de exclusão, leitura do Git, chunker Java, cache de embeddings, indexador e busca mínima (RRF) | feita |
 | 3 | Busca com limites, CLI, HTTP local, MCP somente leitura, logs estruturados, harness de avaliação | feita |
-| 4 | Embedder Ollama, `ollama-probe`, gate UC1/UC2/UC3 | pendente |
+| 4 | Embedder Ollama, `ollama-probe`; gate UC1/UC2/UC3 | embedder e probe feitos; dataset e rodada do gate pendentes |
 | 5 | Operação | pendente |
 
 ## Desenvolvimento
@@ -59,7 +59,24 @@ code-search eval --dataset eval/datasets/uc.jsonl --thresholds eval/thresholds.j
 - **Limites:** tamanho da consulta, `top_k`, número de repos, corpo da requisição e tarefas em execução (sem fila infinita).
 - **Logs:** uma linha JSON por busca, com `request_id`, duração por etapa, modo, perfil, geração e contagens. Só entram
   números e strings curtas de ids; consulta, código, vetores e caminhos nunca aparecem.
-- **Embedder:** o embedder real (Ollama) é da fase 4. Até lá, `CODE_SEARCH_DEV_FAKE_EMBEDDER=1` liga um embedder falso
-  só para desenvolvimento; sem ele, `index` e `search` falham com `embedder_unavailable`.
+- **Embedder:** ver a seção da fase 4. `CODE_SEARCH_DEV_FAKE_EMBEDDER=1` continua ligando um embedder falso
+  só para desenvolvimento e testes.
 - **Gate:** `eval/thresholds.json` guarda os limiares iniciais. O relatório registra o SHA-256 do arquivo usado.
   Os valores são pontos de partida para você aprovar antes da primeira rodada com o modelo real.
+
+## Fase 4: embedder Ollama
+
+O modelo precisa estar instalado antes no Ollama local (`ollama pull <modelo>`); o serviço nunca baixa modelos.
+
+```
+export CODE_SEARCH_OLLAMA_MODEL=nomic-embed-text      # obrigatória (ou qwen3-embedding:0.6b)
+export CODE_SEARCH_OLLAMA_URL=http://127.0.0.1:11434  # opcional; só aceita http em loopback
+export CODE_SEARCH_DOC_PREFIX="" CODE_SEARCH_QUERY_PREFIX=""   # opcionais, entram no perfil
+code-search ollama-probe                              # modelo, digest, dimensão, contexto e profile_id
+```
+
+- O perfil (`profile_id`) vem do modelo, do digest, da dimensão e dos prefixos; trocar qualquer um exige reindexar.
+- Chamadas usam `truncate: false`: entrada maior que o contexto do modelo falha com `embedder_invalid_output`, sem truncar em silêncio.
+- Vetor zerado, não finito ou de dimensão errada também falha com `embedder_invalid_output`; os vetores são normalizados no cliente.
+- Ollama fora do ar ou modelo ausente: `embedder_unavailable`.
+- Dataset e rodada do gate: ver [eval/README.md](eval/README.md). O dataset depende dos repositórios reais e ainda não existe.

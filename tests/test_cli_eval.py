@@ -64,7 +64,7 @@ def test_full_cli_flow(tmp_path, monkeypatch):
 def test_embedder_failure_is_explicit_and_never_silent(tmp_path, monkeypatch):
     code, out, err = run_cli("search", "x", home=tmp_path / "h", monkeypatch=monkeypatch, env_fake=False)
     assert code == 1 and "erro [embedder_unavailable]" in err
-    code, _, err = run_cli("ollama-probe", home=tmp_path / "h", monkeypatch=monkeypatch)
+    code, _, err = run_cli("ollama-probe", home=tmp_path / "h", monkeypatch=monkeypatch, env_fake=False)
     assert code == 1 and "embedder_unavailable" in err
     # comandos que não precisam do modelo continuam funcionando
     assert run_cli("repo", "list", home=tmp_path / "h", monkeypatch=monkeypatch, env_fake=False)[0] == 0

@@ -185,6 +185,10 @@ def test_logs_have_stages_and_no_query_text_or_paths(served):
         status, _, body = client.request("POST", "/v1/search", {"query": "token super-sensivel /home/luan/repo", "mode": "lexical"})
         assert status == 200
         client.request("POST", "/v1/search", {"query": ""})
+        # o servidor registra o log depois de responder: espera as duas linhas antes de parar a captura
+        deadline = time.monotonic() + 5
+        while len(stream.getvalue().splitlines()) < 2 and time.monotonic() < deadline:
+            time.sleep(0.01)
     finally:
         stop()
     lines = [json.loads(l) for l in stream.getvalue().splitlines()]

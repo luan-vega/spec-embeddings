@@ -328,6 +328,7 @@ class FileVectorStore:
         schema: IndexSchema,
         chunks: Sequence[ChunkRecord],
         dense: np.ndarray,
+        roots: Sequence[str] = (),
     ) -> SegmentRef:
         """Monta o segmento em tmp/, valida e move para segments/. Não publica."""
         _check_repo_id(repo_id)
@@ -418,6 +419,7 @@ class FileVectorStore:
             manifest: dict[str, Any] = {
                 "repo_id": repo_id,
                 "repo_revision": repo_revision,
+                "roots": list(roots),
                 "indexed_at": indexed_at,
                 "profile_id": profile.profile_id,
                 "schema_id": schema.schema_id,
@@ -538,6 +540,10 @@ class FileVectorStore:
 
     def active_generation_id(self) -> str | None:
         ptr = self._read_pointer("active.json")
+        return ptr[0] if ptr else None
+
+    def previous_generation_id(self) -> str | None:
+        ptr = self._read_pointer("previous.json")
         return ptr[0] if ptr else None
 
     def open_active(self) -> GenerationSnapshot | None:

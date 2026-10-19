@@ -65,6 +65,7 @@ class Runtime:
         if snapshot is not None:
             out["index"] = {
                 "generation": snapshot.generation_id,
+                "previous_generation": self.store.previous_generation_id(),
                 "created_at": snapshot.created_at,
                 "profile_id": snapshot.profile.profile_id,
                 "model": snapshot.profile.model,

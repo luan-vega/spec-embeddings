@@ -7,8 +7,9 @@ import numpy as np
 
 
 class FakeOllama:
-    def __init__(self, dim=4, models=("nomic-embed-text:latest",), embed_status=200, embeddings=None):
+    def __init__(self, dim=4, models=("nomic-embed-text:latest",), embed_status=200, embeddings=None, generate_response=None):
         self.dim, self.models, self.embed_status, self.embeddings = dim, models, embed_status, embeddings
+        self.generate_response = generate_response
         self.requests = []
         outer = self
 
@@ -32,6 +33,10 @@ class FakeOllama:
                 outer.requests.append(("POST", self.path, body))
                 if self.path == "/api/show":
                     return self._send(200, {"model_info": {"bert.context_length": 2048}})
+                if self.path == "/api/generate":
+                    if outer.generate_response is None:
+                        return self._send(500, {"error": "x"})
+                    return self._send(200, {"response": outer.generate_response})
                 if outer.embed_status != 200:
                     return self._send(outer.embed_status, {"error": "x"})
                 vecs = outer.embeddings or [outer.vector(t) for t in body["input"]]

@@ -98,6 +98,25 @@ code-search ollama-probe                              # modelo, digest, dimensã
 - Ollama fora do ar ou modelo ausente: `embedder_unavailable`.
 - Dataset e rodada do gate: ver [eval/README.md](eval/README.md). O dataset depende dos repositórios reais e ainda não existe.
 
+## Descrição dos métodos por LLM (opcional)
+
+Na indexação, um modelo de texto local do Ollama pode resumir cada método em uma frase em inglês; o resumo entra no
+texto que vira embedding (linha `summary:`), nunca no código guardado nem no léxico. Aproxima consultas em linguagem
+natural (UC1) do código. Desligado por padrão.
+
+```
+ollama pull qwen2.5-coder:1.5b                        # qualquer modelo de texto instalado
+export CODE_SEARCH_DESCRIBER=ollama
+export CODE_SEARCH_DESCRIBER_MODEL=qwen2.5-coder:1.5b
+export CODE_SEARCH_HOME=~/ex/home-qwen-desc           # índice novo: o schema muda
+code-search index
+```
+
+- Só as buscas, `status` e `serve` ignoram o descritor; ele é consultado apenas ao indexar.
+- Trechos já no cache de embeddings não são descritos de novo. Trocar modelo ou prompt muda o `describer_id` e reindexa.
+- Falha do Ollama ou resposta vazia: `describer_unavailable` (nada é publicado). Trechos com segredo nunca chegam ao modelo.
+- Para medir o ganho, rode o `eval` com e sem `CODE_SEARCH_DESCRIBER` (cada um com seu `CODE_SEARCH_HOME`).
+
 ## Fase 5: operação
 
 ```

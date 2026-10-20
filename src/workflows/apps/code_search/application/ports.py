@@ -38,6 +38,19 @@ class Embedder(Protocol):
 
 
 @runtime_checkable
+class ChunkDescriber(Protocol):
+    """Resume um método em uma frase em inglês para aproximar consultas em linguagem natural do código.
+
+    Opcional. ``describer_id`` identifica modelo e prompt: mudar o descritor muda o schema do índice.
+    """
+
+    describer_id: str
+
+    def describe(self, symbol: str, code: str) -> str:
+        """Uma linha de texto. Falha com describer_unavailable; nunca devolve texto vazio."""
+
+
+@runtime_checkable
 class SparseEncoder(Protocol):
     def encode_documents(self, texts: Sequence[str]) -> list[dict[str, int]]:
         """Termo -> frequência, determinístico."""

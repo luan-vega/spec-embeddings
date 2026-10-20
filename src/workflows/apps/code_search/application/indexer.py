@@ -12,7 +12,7 @@ from ..domain.chunker import CHUNKER_VERSION, ChunkDraft, chunk_java
 from ..domain.errors import CodeSearchError
 from ..domain.model import ChunkRecord, IndexSchema, RepoEntry, make_chunk_id
 from ..domain.policy import ExclusionPolicy
-from .ports import EmbeddingCache, Embedder, RepoRegistry, SourceReaderFactory, SparseEncoder, VectorStore
+from .ports import ChunkDescriber, EmbeddingCache, Embedder, RepoRegistry, SourceReaderFactory, SparseEncoder, VectorStore
 
 
 @dataclass
@@ -56,6 +56,7 @@ class IndexService:
         batch_size: int = 32,
         now: Callable[[], str] = _utc_now,
         git_factory: SourceReaderFactory,
+        describer: ChunkDescriber | None = None,
     ) -> None:
         self._store = store
         self._registry = registry
@@ -66,6 +67,11 @@ class IndexService:
         self._batch = batch_size
         self._now = now
         self._git = git_factory
+        self._describer = describer
+
+    @property
+    def _describer_id(self) -> str:
+        return self._describer.describer_id if self._describer is not None else ""
 
     @property
     def schema(self) -> IndexSchema:
@@ -73,6 +79,7 @@ class IndexService:
             chunker_version=CHUNKER_VERSION,
             tokenizer_version=getattr(self._sparse, "version", "1"),
             policy_version=self._policy.version_id,
+            describer_id=self._describer_id,
         )
 
     def index(self, repo_ids: Sequence[str] | None = None, *, force: bool = False) -> IndexReport:
@@ -154,7 +161,7 @@ class IndexService:
         drafts.sort(key=lambda d: (d.source, d.start_line, d.end_line, d.symbol))
         report.chunks = len(drafts)
 
-        keys = [d.embed_key(entry.repo_id) for d in drafts]
+        keys = [d.embed_key(entry.repo_id, self._describer_id) for d in drafts]
         vectors = self._embed(entry.repo_id, drafts, keys, report)
         dense = np.stack([vectors[k] for k in keys]) if keys else np.empty((0, self._embedder.profile.dim), np.float32)
 
@@ -182,15 +189,16 @@ class IndexService:
     def _embed(self, repo_id: str, drafts: list[ChunkDraft], keys: list[str], report: RepoReport) -> dict[str, np.ndarray]:
         found = self._cache.lookup(keys)
         report.embeddings_cached = len(found)
-        texts: dict[str, str] = {}
+        pending_draft: dict[str, ChunkDraft] = {}
         for d, k in zip(drafts, keys):
-            if k not in found and k not in texts:
-                texts[k] = d.embed_text(repo_id)
-        pending = list(texts)
+            if k not in found and k not in pending_draft:
+                pending_draft[k] = d
+        pending = list(pending_draft)
         dim = self._embedder.profile.dim
         for i in range(0, len(pending), self._batch):
             batch = pending[i : i + self._batch]
-            mat = np.asarray(self._embedder.embed_documents([texts[k] for k in batch]), dtype=np.float32)
+            texts = [self._embed_text(repo_id, pending_draft[k]) for k in batch]  # descreve só o que não está no cache
+            mat = np.asarray(self._embedder.embed_documents(texts), dtype=np.float32)
             norms = np.linalg.norm(mat, axis=1) if mat.ndim == 2 else np.array([])
             if mat.shape != (len(batch), dim) or not np.all(np.isfinite(norms)) or np.any(norms < 1e-6):
                 raise CodeSearchError("embedder_invalid_output", "embedder returned null or malformed vectors")
@@ -199,3 +207,7 @@ class IndexService:
             found.update(fresh)
             report.embeddings_new += len(batch)
         return found
+
+    def _embed_text(self, repo_id: str, draft: ChunkDraft) -> str:
+        description = self._describer.describe(draft.symbol, draft.text) if self._describer is not None else ""
+        return draft.embed_text(repo_id, description)

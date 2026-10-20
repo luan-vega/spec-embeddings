@@ -12,11 +12,12 @@ from .adapters.driven.fakes import BagOfWordsEmbedder
 from .adapters.driven.file_store import FileVectorStore
 from .adapters.driven.git_source import GitSource
 from .adapters.driven.ollama import DEFAULT_URL, OllamaEmbedder
+from .adapters.driven.ollama_describer import OllamaDescriber
 from .adapters.driven.policy_store import load_policy
 from .adapters.driven.registry import Registry
 from .application.indexer import IndexService
 from .application.limits import BoundedRunner
-from .application.ports import Embedder, SparseEncoder, VectorStore
+from .application.ports import ChunkDescriber, Embedder, SparseEncoder, VectorStore
 from .application.search import SearchService
 from .config import Paths
 from .domain.errors import CodeSearchError
@@ -43,6 +44,14 @@ EMBEDDERS: dict[str, AdapterSpec] = {
     ),
     "fake": AdapterSpec(lambda env: BagOfWordsEmbedder()),  # só para desenvolvimento e testes de ponta a ponta
 }
+DESCRIBERS: dict[str, AdapterSpec] = {
+    "ollama": AdapterSpec(
+        lambda env: OllamaDescriber(
+            env.get("CODE_SEARCH_DESCRIBER_MODEL", ""),
+            url=env.get("CODE_SEARCH_OLLAMA_URL", DEFAULT_URL),
+        )
+    ),
+}
 STORES: dict[str, AdapterSpec] = {
     "file": AdapterSpec(lambda paths, env: FileVectorStore(paths.home / "index")),
 }
@@ -50,6 +59,10 @@ STORES: dict[str, AdapterSpec] = {
 
 def register_embedder(name: str, factory: Callable[[Mapping[str, str]], Embedder], *, local: bool = True) -> None:
     EMBEDDERS[name] = AdapterSpec(factory, local)
+
+
+def register_describer(name: str, factory: Callable[[Mapping[str, str]], ChunkDescriber], *, local: bool = True) -> None:
+    DESCRIBERS[name] = AdapterSpec(factory, local)
 
 
 def register_store(name: str, factory: Callable[[Paths, Mapping[str, str]], VectorStore], *, local: bool = True) -> None:
@@ -71,10 +84,44 @@ def load_embedder(env: Mapping[str, str] | None = None) -> Embedder:
     return _select("embedder", EMBEDDERS, name, env, "embedder_unavailable").factory(env)
 
 
+def load_describer(env: Mapping[str, str] | None = None) -> ChunkDescriber | None:
+    """Opcional: sem CODE_SEARCH_DESCRIBER o índice é feito só com o código, como antes."""
+    env = os.environ if env is None else env
+    name = env.get("CODE_SEARCH_DESCRIBER")
+    if not name:
+        return None
+    return _select("describer", DESCRIBERS, name, env, "describer_unavailable").factory(env)
+
+
 def load_store(paths: Paths, env: Mapping[str, str] | None = None) -> VectorStore:
     env = os.environ if env is None else env
     name = env.get("CODE_SEARCH_STORE") or "file"
     return _select("store", STORES, name, env, "vector_store_unavailable").factory(paths, env)
+
+
+class _LazyDescriber:
+    """Só consulta o Ollama quando a indexação usa o descritor; busca, status e serve não dependem dele."""
+
+    def __init__(self, load: Callable[[], ChunkDescriber | None]) -> None:
+        self._load = load
+        self._inner: ChunkDescriber | None = None
+        self._loaded = False
+
+    def _get(self) -> ChunkDescriber | None:
+        if not self._loaded:
+            self._inner, self._loaded = self._load(), True
+        return self._inner
+
+    @property
+    def describer_id(self) -> str:
+        inner = self._get()
+        return inner.describer_id if inner is not None else ""
+
+    def describe(self, symbol: str, code: str) -> str:
+        inner = self._get()
+        if inner is None:
+            return ""
+        return inner.describe(symbol, code)
 
 
 @dataclass
@@ -161,6 +208,7 @@ def build_runtime(
     home: Path | str | None = None,
     *,
     embedder: Embedder | None = None,
+    describer: ChunkDescriber | None = None,
     with_embedder: bool = True,
     max_concurrent: int = 4,
     timeout_s: float = 30.0,
@@ -179,5 +227,6 @@ def build_runtime(
         runtime.indexer = IndexService(
             store=store, registry=registry, embedder=runtime.embedder, sparse=sparse, policy=policy,
             cache=runtime.cache, git_factory=lambda e: GitSource(e.path, e.ref),
+            describer=_LazyDescriber(lambda: describer if describer is not None else load_describer()),
         )
     return runtime
